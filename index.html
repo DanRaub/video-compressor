@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Compressor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗜️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #E7E9EC; --surface: #F3F4F6; --ink: #17202C; --muted: #5E6978; --line: #C7CCD3;
+    --accent: #2E47D1; --accent-ink: #FFFFFF; --good: #1F7A4D; --bad: #B3261E; --radius: 10px;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #12161C; --surface: #1B2029; --ink: #E7E9EC; --muted: #97A1AE;
+      --line: #2E3541; --accent: #7B8CFF; --accent-ink: #0E1220; --good: #5BC48F; --bad: #FF8A80;
+    }
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 16px; line-height: 1.5; font-feature-settings: "tnum" 1; }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 24px 80px; }
+  h1 { font-size: 2.5rem; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 36px; max-width: 56ch; }
+
+  .group { display: grid; grid-template-columns: 72px 1fr; gap: 12px 16px; align-items: end; padding: 16px 0; border-top: 1px solid var(--line); }
+  .group:last-of-type { border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+  .group[hidden] { display: none; }
+  .group > h2 { font-size: 1rem; font-weight: 600; margin: 0; align-self: center; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px 20px; align-items: end; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > span { font-size: 0.875rem; color: var(--muted); }
+  .size-input { display: flex; align-items: center; width: 110px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  .size-input input { width: 100%; border: 0; background: transparent; color: var(--ink); font: inherit; padding: 8px 12px; }
+  .size-input em { font-style: normal; color: var(--muted); padding-right: 12px; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 3px; }
+  .seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 0.9375rem; padding: 5px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .check { flex-direction: row; align-items: center; gap: 10px; padding-bottom: 8px; cursor: pointer; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+  .check span { color: var(--ink); font-size: 1rem; }
+
+  .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 170px; border: 1.5px dashed var(--line); border-radius: 14px; background: var(--surface); text-align: center; padding: 24px; cursor: pointer; transition: border-color .15s; }
+  .drop strong { font-size: 1.125rem; font-weight: 600; }
+  .drop small { color: var(--muted); font-size: 0.875rem; }
+  .drop.over { border-color: var(--accent); border-style: solid; }
+  .drop input { display: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .status { margin: 12px 0 0; color: var(--muted); font-size: 0.875rem; min-height: 1.5em; }
+
+  .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 28px; }
+  .toolbar[hidden] { display: none; }
+  .summary { color: var(--muted); font-size: 0.9375rem; }
+  .toolbar .actions { margin: 0; }
+
+  .queue { list-style: none; margin: 12px 0 0; padding: 0; }
+  .item { padding: 18px 0; border-top: 1px solid var(--line); }
+  .item:last-child { border-bottom: 1px solid var(--line); }
+  .item-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .state { color: var(--muted); font-size: 0.875rem; white-space: nowrap; }
+  .sizes { display: flex; align-items: baseline; gap: 14px; margin-top: 4px; }
+  .from { font-size: 1.125rem; color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .to { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+  .to.pending { color: var(--line); }
+  .bar { height: 3px; background: var(--line); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+  .bar.indeterminate i { width: 30%; animation: slide 1s ease-in-out infinite alternate; }
+  @keyframes slide { from { transform: translateX(0); } to { transform: translateX(233%); } }
+  .item.done .bar, .item.error .bar { display: none; }
+  .actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .actions:empty { display: none; }
+  .btn { display: inline-flex; align-items: center; border: 0; border-radius: var(--radius); font: inherit; font-weight: 500; font-size: 0.9375rem; padding: 8px 16px; background: var(--accent); color: var(--accent-ink); cursor: pointer; text-decoration: none; }
+  .btn.quiet { background: transparent; color: var(--muted); padding-inline: 8px; }
+  .btn.quiet:hover { color: var(--ink); }
+  .note { color: var(--muted); font-size: 0.875rem; }
+  .item.error .state { color: var(--bad); }
+  .item.done .state { color: var(--good); }
+
+  footer { margin-top: 48px; color: var(--muted); font-size: 0.8125rem; max-width: 62ch; }
+
+  @media (max-width: 560px) {
+    main { padding-top: 32px; }
+    h1 { font-size: 2rem; }
+    .group { grid-template-columns: 1fr; }
+    .to { font-size: 1.5rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Compressor</h1>
+  <p class="lede">Drop in videos and images to shrink them. Everything runs in your browser, so files never leave your computer.</p>
+
+  <section class="group" id="video-settings" aria-labelledby="v-h">
+    <h2 id="v-h">Video</h2>
+    <div class="row">
+      <label class="field">
+        <span>Target size</span>
+        <div class="size-input"><input id="target" type="number" min="1" step="0.5" inputmode="decimal"><em>MB</em></div>
+      </label>
+      <div class="field">
+        <span id="res-label">Max resolution</span>
+        <div class="seg" role="group" aria-labelledby="res-label" data-setting="res">
+          <button type="button" data-value="0">Original</button>
+          <button type="button" data-value="1080">1080p</button>
+          <button type="button" data-value="720">720p</button>
+        </div>
+      </div>
+      <div class="field">
+        <span id="speed-label">Encode</span>
+        <div class="seg" role="group" aria-labelledby="speed-label" data-setting="speed">
+          <button type="button" data-value="veryfast">Faster</button>
+          <button type="button" data-value="medium">Sharper</button>
+        </div>
+      </div>
+      <label class="field check"><input id="mute" type="checkbox"><span>Remove audio</span></label>
+    </div>
+  </section>
+
+  <section class="group" id="image-settings" aria-labelledby="i-h">
+    <h2 id="i-h">Images</h2>
+    <div class="row">
+      <div class="field">
+        <span id="q-label">Quality</span>
+        <div class="seg" role="group" aria-labelledby="q-label" data-setting="quality">
+          <button type="button" data-value="smaller">Smaller</button>
+          <button type="button" data-value="balanced">Balanced</button>
+          <button type="button" data-value="higher">Higher</button>
+        </div>
+      </div>
+      <label class="field check"><input id="webp" type="checkbox"><span>Convert to WebP</span></label>
+    </div>
+  </section>
+
+  <label class="drop" id="drop" tabindex="0">
+    <input id="file" type="file" accept="video/*,image/png,image/jpeg,image/webp" multiple>
+    <strong>Drop files here or click to choose</strong>
+    <small>Videos (MP4, MOV, WebM…) and images (PNG, JPG, WebP)</small>
+  </label>
+  <p class="status" id="status" role="status"></p>
+
+  <div class="toolbar" id="toolbar" hidden>
+    <span class="summary" id="summary"></span>
+    <div class="actions">
+      <button type="button" class="btn quiet" id="clear">Clear list</button>
+      <button type="button" class="btn" id="zip" hidden>Download all</button>
+    </div>
+  </div>
+  <ul class="queue" id="queue"></ul>
+
+  <footer>Encoders load the first time you use them (images about 1 MB, video about 31 MB), then your browser caches them. Change a setting and use Redo to try again. Very large videos (roughly over 1 GB) may run out of browser memory; trim them first.</footer>
+</main>
+
+<script type="module">
+
+const $ = (s) => document.querySelector(s);
+const statusEl = $("#status");
+const queueEl = $("#queue");
+
+// ---------- settings (remembered per browser) ----------
+const settings = { target: 10, res: "0", speed: "veryfast", mute: false, quality: "balanced", webp: false };
+try { Object.assign(settings, JSON.parse(localStorage.getItem("vc-settings") || "{}")); } catch {}
+const save = () => { try { localStorage.setItem("vc-settings", JSON.stringify(settings)); } catch {} };
+
+$("#target").value = settings.target;
+$("#mute").checked = settings.mute;
+$("#webp").checked = settings.webp;
+$("#target").addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (v > 0) { settings.target = v; save(); } else e.target.value = settings.target; });
+$("#mute").addEventListener("change", (e) => { settings.mute = e.target.checked; save(); });
+$("#webp").addEventListener("change", (e) => { settings.webp = e.target.checked; save(); });
+document.querySelectorAll(".seg").forEach((seg) => {
+  const key = seg.dataset.setting;
+  const sync = () => seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.value === settings[key])));
+  seg.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; settings[key] = b.dataset.value; save(); sync(); });
+  sync();
+});
+
+// ---------- helpers ----------
+const fmt = (bytes) => bytes >= 1e9 ? (bytes / 1e9).toFixed(2) + " GB" : bytes >= 1e6 ? (bytes / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(bytes / 1e3)) + " KB";
+const imageKind = (f) => {
+  const t = f.type, n = f.name.toLowerCase();
+  if (t === "image/png" || n.endsWith(".png")) return "png";
+  if (t === "image/jpeg" || /\.jpe?g$/.test(n)) return "jpeg";
+  if (t === "image/webp" || n.endsWith(".webp")) return "webp";
+  return null;
+};
+const isVideo = (f) => f.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(f.name);
+
+// ---------- item UI ----------
+const items = [];
+function makeItem(file, kind) {
+  const li = document.createElement("li");
+  li.className = "item";
+  li.innerHTML = `
+    <div class="item-head"><span class="name"></span><span class="state">Waiting</span></div>
+    <div class="sizes"><span class="from"></span><span class="to pending">…</span></div>
+    <div class="bar"><i></i></div>
+    <div class="actions"></div>`;
+  li.querySelector(".name").textContent = file.name;
+  li.querySelector(".from").textContent = fmt(file.size);
+  queueEl.prepend(li);
+  const item = { file, kind, li, out: null, outName: null };
+  items.push(item);
+  return item;
+}
+function resetItem(item) {
+  const li = item.li;
+  if (item.url) URL.revokeObjectURL(item.url);
+  item.out = item.outName = item.url = null;
+  li.classList.remove("done", "error");
+  li.querySelector(".state").textContent = "Waiting";
+  const to = li.querySelector(".to"); to.textContent = "…"; to.classList.add("pending");
+  li.querySelector(".bar").classList.remove("indeterminate");
+  setBar(li, 0);
+  li.querySelector(".actions").innerHTML = "";
+}
+const setState = (li, text, cls) => { li.querySelector(".state").textContent = text; if (cls) li.classList.add(cls); };
+const setBar = (li, p) => { li.querySelector(".bar i").style.width = Math.max(0, Math.min(100, p * 100)) + "%"; };
+const addNote = (li, text) => { const n = document.createElement("span"); n.className = "note"; n.textContent = text; li.querySelector(".actions").append(n); };
+
+function finish(item, blob, name, { note, over } = {}) {
+  const { li, file } = item;
+  item.out = blob; item.outName = name; item.url = URL.createObjectURL(blob);
+  const to = li.querySelector(".to");
+  to.classList.remove("pending");
+  to.textContent = fmt(blob.size);
+  const saved = Math.round((1 - blob.size / file.size) * 100);
+  if (over) setState(li, "Over target", "error");
+  else setState(li, saved > 0 ? `Done, ${saved}% smaller` : "Done", "done");
+  const actions = li.querySelector(".actions");
+  const a = document.createElement("a");
+  a.className = "btn"; a.href = item.url; a.download = name; a.textContent = "Download";
+  const redo = document.createElement("button");
+  redo.type = "button"; redo.className = "btn quiet"; redo.textContent = "Redo";
+  redo.addEventListener("click", () => enqueue(item));
+  actions.append(a, redo);
+  if (note) addNote(li, note);
+  refresh();
+}
+function fail(item, msg) {
+  setState(item.li, "Failed", "error");
+  item.li.querySelector(".to").textContent = "–";
+  const redo = document.createElement("button");
+  redo.type = "button"; redo.className = "btn quiet"; redo.textContent = "Redo";
+  redo.addEventListener("click", () => enqueue(item));
+  item.li.querySelector(".actions").append(redo);
+  addNote(item.li, msg);
+  refresh();
+}
+
+// Show only the settings for what's in the list; both when it's empty
+function refresh() {
+  const hasVideo = items.some((i) => i.kind === "video");
+  const hasImage = items.some((i) => i.kind !== "video");
+  const empty = items.length === 0;
+  $("#video-settings").hidden = !(empty || hasVideo);
+  $("#image-settings").hidden = !(empty || hasImage);
+  $("#toolbar").hidden = empty;
+  const done = items.filter((i) => i.out);
+  const before = done.reduce((s, i) => s + i.file.size, 0);
+  const after = done.reduce((s, i) => s + i.out.size, 0);
+  $("#summary").textContent = done.length ? `${done.length} of ${items.length} done, ${fmt(before)} → ${fmt(after)}` : `${items.length} in the list`;
+  $("#zip").hidden = done.length < 2;
+}
+
+// ---------- queues (video and images run side by side) ----------
+const videoQueue = [], imageQueue = [];
+let videoBusy = false, imageBusy = false;
+
+function enqueue(item) {
+  resetItem(item);
+  item.settings = { ...settings };
+  if (item.kind === "video") { videoQueue.push(item); runVideo(); }
+  else { imageQueue.push(item); runImages(); }
+  refresh();
+}
+function addFiles(files) {
+  let skipped = 0;
+  for (const file of files) {
+    const kind = isVideo(file) ? "video" : imageKind(file);
+    if (!kind) { skipped++; continue; }
+    enqueue(makeItem(file, kind));
+  }
+  statusEl.textContent = skipped ? `Skipped ${skipped} file${skipped > 1 ? "s" : ""}. Supported: videos, PNG, JPG, WebP.` : "";
+}
+
+// ---------- images ----------
+let worker = null, jobId = 0;
+const pending = new Map();
+function imageWorker() {
+  if (!worker) {
+    worker = new Worker(new URL("./img-worker.js", import.meta.url), { type: "module" });
+    worker.onmessage = ({ data }) => { const p = pending.get(data.id); if (p) { pending.delete(data.id); p(data); } };
+    worker.onerror = (e) => { console.error(e); for (const [id, p] of pending) p({ ok: false, error: "Worker crashed" }); pending.clear(); worker = null; };
+  }
+  return worker;
+}
+async function runImages() {
+  if (imageBusy) return;
+  imageBusy = true;
+  while (imageQueue.length) {
+    const item = imageQueue.shift();
+    const { li, file, kind, settings: s } = item;
+    setState(li, "Compressing");
+    li.querySelector(".bar").classList.add("indeterminate");
+    try {
+      const bytes = await file.arrayBuffer();
+      const id = ++jobId;
+      const res = await new Promise((resolve) => {
+        pending.set(id, resolve);
+        imageWorker().postMessage({ id, bytes, kind, type: file.type || `image/${kind}`, preset: s.quality, toWebp: s.webp }, [bytes]);
+      });
+      if (!res.ok) throw new Error(res.error);
+      const blob = new Blob([res.bytes], { type: res.type });
+      const base = file.name.replace(/\.[^.]+$/, "");
+      const name = s.webp ? base + ".webp" : file.name;
+      if (res.animated) finish(item, blob, file.name, { note: "Animated image, kept the original so the animation isn't lost." });
+      else finish(item, blob, res.kept ? file.name : name, res.kept ? { note: "Already optimised, kept the original." } : {});
+    } catch (err) {
+      console.error(err);
+      fail(item, "This image couldn't be read.");
+    }
+  }
+  imageBusy = false;
+}
+
+// ---------- video ----------
+// The video engine loads only when a video is dropped. The 31 MB encoder comes from a CDN
+// (GitHub's web uploader rejects files over 25 MB); a copy in vendor/core is used if present.
+const CORE_CDN = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/";
+let ffmpeg = null, ffLoaded = null, ffReady = false, logLines = [], onTime = null;
+async function blobURL(url, type) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status} ${url}`);
+  return URL.createObjectURL(new Blob([await r.arrayBuffer()], { type }));
+}
+async function coreURLs(base) {
+  return {
+    coreURL: await blobURL(base + "ffmpeg-core.js", "text/javascript"),
+    wasmURL: await blobURL(base + "ffmpeg-core.wasm", "application/wasm"),
+  };
+}
+function loadFFmpeg() {
+  if (!ffLoaded) {
+    ffLoaded = (async () => {
+      const { FFmpeg } = await import("./vendor/ffmpeg/index.js");
+      ffmpeg = new FFmpeg();
+      ffmpeg.on("log", ({ message }) => {
+        logLines.push(message);
+        const m = message.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        if (m && onTime) onTime(+m[1] * 3600 + +m[2] * 60 + +m[3]);
+      });
+      let urls;
+      try { urls = await coreURLs(new URL("./vendor/core/", location.href).href); }
+      catch { urls = await coreURLs(CORE_CDN); }
+      await ffmpeg.load(urls);
+      ffReady = true;
+    })().catch((err) => { ffLoaded = null; throw err; });
+  }
+  return ffLoaded;
+}
+async function runVideo() {
+  if (videoBusy) return;
+  videoBusy = true;
+  while (videoQueue.length) {
+    const item = videoQueue.shift();
+    try { await compressVideo(item); }
+    catch (err) {
+      console.error(err);
+      fail(item, ffReady ? "This video couldn't be compressed. Try exporting it as MP4 first." : "The video encoder didn't load. Check your connection and reload.");
+      // Start the next video on a fresh engine in case this one ran out of memory
+      if (ffmpeg) { try { ffmpeg.terminate(); } catch {} }
+      ffmpeg = null; ffLoaded = null; ffReady = false;
+    }
+  }
+  videoBusy = false;
+}
+async function compressVideo(item) {
+  const { file, li, settings: s } = item;
+  const targetBytes = s.target * 1e6;
+  setState(li, ffReady ? "Reading" : "Loading video encoder");
+  await loadFFmpeg();
+  setState(li, "Reading");
+
+  const ext = (file.name.match(/\.[^.]+$/) || [".mp4"])[0].toLowerCase();
+  const inName = "in" + ext;
+  await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+
+  logLines = [];
+  await ffmpeg.exec(["-hide_banner", "-i", inName]);
+  const log = logLines.join("\n");
+  const d = log.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  let duration = d ? +d[1] * 3600 + +d[2] * 60 + +d[3] : 0;
+  if (!(duration > 0)) {
+    // No duration in the header (common for screen and browser recordings): read through the file to measure it
+    setState(li, "Measuring");
+    logLines = [];
+    await ffmpeg.exec(["-hide_banner", "-i", inName, "-map", "0:v:0", "-c", "copy", "-f", "null", "-"]);
+    const times = [...logLines.join("\n").matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)];
+    const t = times.at(-1);
+    duration = t ? +t[1] * 3600 + +t[2] * 60 + +t[3] : 0;
+  }
+  if (!(duration > 0)) throw new Error("Couldn't determine duration");
+  const hasAudio = /Stream #.*Audio:/.test(log);
+  const keepAudio = hasAudio && !s.mute;
+  const audioKbps = keepAudio ? 128 : 0;
+
+  if (file.size <= targetBytes && s.res === "0" && !(hasAudio && s.mute)) {
+    await ffmpeg.deleteFile(inName);
+    finish(item, file, file.name, { note: "Already under target, kept the original." });
+    return;
+  }
+
+  // Never aim bigger than the file already is (e.g. a small clip downscaled or muted)
+  const goalBytes = Math.min(targetBytes, file.size);
+  let videoKbps = Math.max(80, Math.floor((goalBytes * 8 * 0.94) / duration / 1000 - audioKbps));
+  // H.264 needs even dimensions; also caps the short edge when a max resolution is chosen
+  const vf = s.res === "0"
+    ? "scale='trunc(iw/2)*2':'trunc(ih/2)*2'"
+    : `scale='if(gte(iw,ih),-2,trunc(min(${s.res},iw)/2)*2)':'if(gte(iw,ih),trunc(min(${s.res},ih)/2)*2,-2)'`;
+
+  const outName = "out.mp4";
+  let out = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    setState(li, attempt === 1 ? "Compressing" : "Compressing again, smaller");
+    setBar(li, 0);
+    onTime = (t) => setBar(li, t / duration);
+    const args = ["-hide_banner", "-i", inName, "-map", "0:v:0"];
+    if (keepAudio) args.push("-map", "0:a:0", "-c:a", "aac", "-b:a", audioKbps + "k");
+    else args.push("-an");
+    args.push("-vf", vf);
+    args.push("-c:v", "libx264", "-preset", s.speed,
+      "-b:v", videoKbps + "k", "-maxrate", Math.round(videoKbps * 1.3) + "k", "-bufsize", videoKbps * 2 + "k",
+      "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-y", outName);
+    logLines = [];
+    const code = await ffmpeg.exec(args);
+    onTime = null;
+    if (code !== 0) throw new Error("Encode failed");
+    out = await ffmpeg.readFile(outName);
+    if (out.byteLength <= goalBytes) break;
+    videoKbps = Math.max(60, Math.floor(videoKbps * (goalBytes / out.byteLength) * 0.93));
+  }
+  await ffmpeg.deleteFile(inName).catch(() => {});
+  await ffmpeg.deleteFile(outName).catch(() => {});
+
+  const blob = new Blob([out], { type: "video/mp4" });
+  const name = file.name.replace(/\.[^.]+$/, "") + "_compressed.mp4";
+  if (blob.size >= file.size && file.size <= targetBytes) { finish(item, file, file.name, { note: "Couldn't beat the original, kept it." }); return; }
+  if (blob.size > targetBytes) finish(item, blob, name, { over: true, note: "Still too big. Try 720p or a larger target." });
+  else finish(item, blob, name, videoKbps < 600 && s.res === "0" ? { note: "Low bitrate for this length. 720p may look cleaner." } : {});
+}
+
+// ---------- toolbar ----------
+$("#clear").addEventListener("click", () => {
+  // Keep anything still in progress
+  const busy = new Set([...videoQueue, ...imageQueue]);
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    const working = !it.out && !it.li.classList.contains("error");
+    if (busy.has(it) || working) continue;
+    if (it.url) URL.revokeObjectURL(it.url);
+    it.li.remove();
+    items.splice(i, 1);
+  }
+  statusEl.textContent = "";
+  refresh();
+});
+$("#zip").addEventListener("click", async () => {
+  const { zipSync } = await import("./vendor/fflate/fflate.js");
+  const files = {}, used = new Set();
+  for (const it of items) {
+    if (!it.out) continue;
+    let name = it.outName, n = 1;
+    while (used.has(name)) name = it.outName.replace(/(\.[^.]+)?$/, ` (${n++})$1`);
+    used.add(name);
+    files[name] = [new Uint8Array(await it.out.arrayBuffer()), { level: 0 }];
+  }
+  const url = URL.createObjectURL(new Blob([zipSync(files)], { type: "application/zip" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "compressed.zip"; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+});
+
+// ---------- input ----------
+const drop = $("#drop");
+$("#file").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#file").click(); } });
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => { e.preventDefault(); if (!drop.contains(e.target)) addFiles(e.dataTransfer.files); });
+refresh();
+if (location.protocol === "file:") statusEl.textContent = "Opened as a local file, so compression won't run. Use the GitHub Pages link, or serve the folder (see README).";
+</script>
+<script nomodule>document.getElementById("status").textContent = "This browser is too old to run the compressor.";</script>
+</body>
+</html>
